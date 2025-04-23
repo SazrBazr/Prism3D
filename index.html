@@ -6,8 +6,11 @@
     <title>Prism3D | Premium 3D Printing</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/OBJLoader.js"></script>
     <style>
-        /* ===== GLOBAL STYLES ===== */
         :root {
             --primary: #2A2A2A;
             --accent: #4361EE;
@@ -29,7 +32,6 @@
             overflow-x: hidden;
         }
 
-        /* ===== HEADER & NAVBAR ===== */
         .navbar {
             background: rgba(255, 255, 255, 0.98);
             backdrop-filter: blur(10px);
@@ -109,7 +111,6 @@
             font-weight: 600;
         }
 
-        /* ===== HERO SECTION ===== */
         .hero {
             padding: 10rem 5% 5rem;
             text-align: center;
@@ -150,7 +151,6 @@
             box-shadow: 0 8px 25px rgba(67, 97, 238, 0.4);
         }
 
-        /* ===== PRODUCT GALLERY ===== */
         .gallery {
             padding: 5rem 5%;
             max-width: 1400px;
@@ -234,7 +234,6 @@
             background: #3a56d4;
         }
 
-        /* ===== CUSTOM ORDER FORM ===== */
         .custom-order {
             background: white;
             padding: 5rem 5%;
@@ -337,7 +336,6 @@
             box-shadow: 0 8px 25px rgba(67, 97, 238, 0.4);
         }
 
-        /* ===== FEATURES SECTION ===== */
         .features {
             padding: 5rem 5%;
             background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
@@ -381,7 +379,6 @@
             font-size: 0.9rem;
         }
 
-        /* ===== FOOTER ===== */
         .footer {
             background: var(--dark);
             color: white;
@@ -475,7 +472,6 @@
             font-size: 0.9rem;
         }
 
-        /* ===== CART MODAL ===== */
         .cart-modal {
             position: fixed;
             top: 0;
@@ -570,7 +566,6 @@
             width: 100%;
         }
 
-        /* ===== OVERLAYS & NOTIFICATIONS ===== */
         .overlay {
             position: fixed;
             top: 0;
@@ -609,7 +604,6 @@
             opacity: 1;
         }
 
-        /* ===== LOADING SPINNER ===== */
         .loader {
             position: fixed;
             top: 0;
@@ -645,7 +639,55 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* ===== RESPONSIVE DESIGN ===== */
+        /* 3D Model Viewer Styles */
+        .model-viewer-container {
+            width: 100%;
+            height: 400px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            margin: 1rem 0;
+            position: relative;
+            overflow: hidden;
+            background: #f8f9fa;
+        }
+        
+        .model-viewer {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .viewer-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 100;
+            background: rgba(255,255,255,0.8);
+            padding: 5px;
+            border-radius: 5px;
+        }
+        
+        .viewer-controls button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            margin: 0 2px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        .upload-status {
+            margin-top: 5px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .model-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
         @media (max-width: 992px) {
             .hero h1 {
                 font-size: 2.8rem;
@@ -758,8 +800,19 @@
                         <input type="file" id="modelFile" class="file-upload-input" accept=".stl,.obj,.3mf" required>
                         <label for="modelFile" class="file-upload-label">
                             <i class="fas fa-cloud-upload-alt"></i>
-                            <span>Click to upload your 3D model file</span>
+                            <span>Click to upload your 3D model file (STL, OBJ, or 3MF)</span>
                         </label>
+                    </div>
+                    <div class="upload-status" id="uploadStatus"></div>
+                    
+                    <!-- 3D Model Viewer Container -->
+                    <div class="model-viewer-container" id="modelViewerContainer" style="display: none;">
+                        <div id="modelViewer" class="model-viewer"></div>
+                        <div class="viewer-controls">
+                            <button type="button" id="rotateModel"><i class="fas fa-sync-alt"></i> Rotate</button>
+                            <button type="button" id="zoomIn"><i class="fas fa-search-plus"></i> Zoom In</button>
+                            <button type="button" id="zoomOut"><i class="fas fa-search-minus"></i> Zoom Out</button>
+                        </div>
                     </div>
                 </div>
                 <div class="form-group full-width">
@@ -932,6 +985,136 @@
             }
         ];
 
+        // ===== 3D MODEL VIEWER =====
+        let scene, camera, renderer, model, controls;
+        let isRotating = false;
+        let rotationInterval;
+        
+        function init3DViewer() {
+            const container = document.getElementById('modelViewer');
+            
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf8f9fa);
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.z = 5;
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+            
+            // Add orbit controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.25;
+            
+            // Add grid helper
+            const gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+            
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+            
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+        
+        function loadModel(file) {
+            const reader = new FileReader();
+            const fileName = file.name.toLowerCase();
+            const container = document.getElementById('modelViewerContainer');
+            const statusElement = document.getElementById('uploadStatus');
+            
+            statusElement.textContent = `Loading ${file.name}...`;
+            container.style.display = 'block';
+            
+            // Clear previous model if exists
+            if (model) {
+                scene.remove(model);
+            }
+            
+            reader.onload = function(event) {
+                const contents = event.target.result;
+                
+                if (fileName.endsWith('.stl')) {
+                    const loader = new THREE.STLLoader();
+                    const geometry = loader.parse(contents);
+                    const material = new THREE.MeshPhongMaterial({ 
+                        color: 0x4361ee,
+                        specular: 0x111111,
+                        shininess: 200
+                    });
+                    model = new THREE.Mesh(geometry, material);
+                } 
+                else if (fileName.endsWith('.obj')) {
+                    const loader = new THREE.OBJLoader();
+                    model = loader.parse(contents);
+                    model.traverse(function(child) {
+                        if (child.isMesh) {
+                            child.material = new THREE.MeshPhongMaterial({ 
+                                color: 0x4361ee,
+                                specular: 0x111111,
+                                shininess: 200
+                            });
+                        }
+                    });
+                }
+                
+                if (model) {
+                    scene.add(model);
+                    
+                    // Center and scale model
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    
+                    model.position.x += (model.position.x - center.x);
+                    model.position.y += (model.position.y - center.y);
+                    model.position.z += (model.position.z - center.z);
+                    
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 5 / maxDim;
+                    model.scale.set(scale, scale, scale);
+                    
+                    camera.lookAt(center);
+                    controls.target.copy(center);
+                    
+                    statusElement.textContent = `Model loaded: ${file.name}`;
+                    statusElement.style.color = '#28a745';
+                } else {
+                    statusElement.textContent = `Failed to load model: Unsupported format`;
+                    statusElement.style.color = '#dc3545';
+                }
+            };
+            
+            if (fileName.endsWith('.stl') || fileName.endsWith('.obj')) {
+                reader.readAsArrayBuffer(file);
+            } else {
+                statusElement.textContent = `Unsupported file format: ${file.name.split('.').pop()}`;
+                statusElement.style.color = '#dc3545';
+            }
+        }
+
         // ===== CART FUNCTIONALITY =====
         let cart = [];
 
@@ -954,6 +1137,9 @@
             
             // Setup event listeners
             setupEventListeners();
+            
+            // Initialize 3D viewer
+            init3DViewer();
             
             // Show loader for 1.5 seconds on page load
             loader.classList.add('active');
@@ -1014,7 +1200,43 @@
                 setTimeout(() => {
                     hideLoader();
                     this.reset();
+                    document.getElementById('modelViewerContainer').style.display = 'none';
+                    document.getElementById('uploadStatus').textContent = '';
                 }, 2000);
+            });
+            
+            // File upload handling
+            const fileInput = document.getElementById('modelFile');
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    loadModel(e.target.files[0]);
+                }
+            });
+            
+            // Viewer controls
+            document.getElementById('rotateModel').addEventListener('click', function() {
+                isRotating = !isRotating;
+                this.innerHTML = isRotating ? 
+                    '<i class="fas fa-pause"></i> Stop' : 
+                    '<i class="fas fa-sync-alt"></i> Rotate';
+                
+                if (isRotating) {
+                    rotationInterval = setInterval(() => {
+                        if (model) model.rotation.y += 0.01;
+                    }, 16);
+                } else {
+                    clearInterval(rotationInterval);
+                }
+            });
+            
+            document.getElementById('zoomIn').addEventListener('click', function() {
+                camera.fov /= 1.1;
+                camera.updateProjectionMatrix();
+            });
+            
+            document.getElementById('zoomOut').addEventListener('click', function() {
+                camera.fov *= 1.1;
+                camera.updateProjectionMatrix();
             });
         }
 
