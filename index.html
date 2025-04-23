@@ -1039,6 +1039,7 @@
             animate();
         }
         
+        // Replace your loadModel function with this updated version:
         function loadModel(file) {
             const reader = new FileReader();
             const fileName = file.name.toLowerCase();
@@ -1047,66 +1048,85 @@
             
             statusElement.textContent = `Loading ${file.name}...`;
             container.style.display = 'block';
-            
+
             // Clear previous model if exists
             if (model) {
                 scene.remove(model);
+                model = null;
             }
-            
+
+            // Add axes helper for orientation
+            const axesHelper = new THREE.AxesHelper(5);
+            scene.add(axesHelper);
+
             reader.onload = function(event) {
-                const contents = event.target.result;
-                
-                if (fileName.endsWith('.stl')) {
-                    const loader = new THREE.STLLoader();
-                    const geometry = loader.parse(contents);
-                    const material = new THREE.MeshPhongMaterial({ 
-                        color: 0x4361ee,
-                        specular: 0x111111,
-                        shininess: 200
-                    });
-                    model = new THREE.Mesh(geometry, material);
-                } 
-                else if (fileName.endsWith('.obj')) {
-                    const loader = new THREE.OBJLoader();
-                    model = loader.parse(contents);
-                    model.traverse(function(child) {
-                        if (child.isMesh) {
-                            child.material = new THREE.MeshPhongMaterial({ 
-                                color: 0x4361ee,
-                                specular: 0x111111,
-                                shininess: 200
-                            });
-                        }
-                    });
-                }
-                
-                if (model) {
-                    scene.add(model);
+                try {
+                    const contents = event.target.result;
                     
-                    // Center and scale model
-                    const box = new THREE.Box3().setFromObject(model);
-                    const center = box.getCenter(new THREE.Vector3());
-                    const size = box.getSize(new THREE.Vector3());
-                    
-                    model.position.x += (model.position.x - center.x);
-                    model.position.y += (model.position.y - center.y);
-                    model.position.z += (model.position.z - center.z);
-                    
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const scale = 5 / maxDim;
-                    model.scale.set(scale, scale, scale);
-                    
-                    camera.lookAt(center);
-                    controls.target.copy(center);
-                    
-                    statusElement.textContent = `Model loaded: ${file.name}`;
-                    statusElement.style.color = '#28a745';
-                } else {
-                    statusElement.textContent = `Failed to load model: Unsupported format`;
+                    if (fileName.endsWith('.stl')) {
+                        const loader = new THREE.STLLoader();
+                        const geometry = loader.parse(contents);
+                        
+                        // Add more visible material
+                        const material = new THREE.MeshPhongMaterial({ 
+                            color: 0x4361ee,
+                            specular: 0x111111,
+                            shininess: 50,
+                            side: THREE.DoubleSide  // Important for some STL files
+                        });
+                        
+                        model = new THREE.Mesh(geometry, material);
+                    } 
+                    else if (fileName.endsWith('.obj')) {
+                        const loader = new THREE.OBJLoader();
+                        model = loader.parse(contents);
+                        model.traverse(function(child) {
+                            if (child.isMesh) {
+                                child.material = new THREE.MeshPhongMaterial({ 
+                                    color: 0x4361ee,
+                                    specular: 0x111111,
+                                    shininess: 50
+                                });
+                            }
+                        });
+                    }
+
+                    if (model) {
+                        scene.add(model);
+                        
+                        // Center and scale model with better visibility
+                        const box = new THREE.Box3().setFromObject(model);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const size = box.getSize(new THREE.Vector3());
+                        
+                        model.position.sub(center); // Center the model
+                        
+                        // Calculate zoom to fit
+                        const maxDim = Math.max(size.x, size.y, size.z);
+                        const cameraZ = Math.max(maxDim * 1.5, 5);
+                        camera.position.z = cameraZ;
+                        
+                        controls.target.copy(center);
+                        controls.update();
+                        
+                        statusElement.textContent = `Model loaded: ${file.name}`;
+                        statusElement.style.color = '#28a745';
+                    } else {
+                        statusElement.textContent = `File loaded but couldn't parse as 3D model`;
+                        statusElement.style.color = '#dc3545';
+                    }
+                } catch (error) {
+                    console.error('Error loading model:', error);
+                    statusElement.textContent = `Error loading model: ${error.message}`;
                     statusElement.style.color = '#dc3545';
                 }
             };
-            
+
+            reader.onerror = function() {
+                statusElement.textContent = 'Error reading file';
+                statusElement.style.color = '#dc3545';
+            };
+
             if (fileName.endsWith('.stl') || fileName.endsWith('.obj')) {
                 reader.readAsArrayBuffer(file);
             } else {
